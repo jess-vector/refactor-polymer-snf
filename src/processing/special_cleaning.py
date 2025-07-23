@@ -43,15 +43,16 @@ def tga_xy(tga_folder):
 
 def normalize_tga(df, y_col='Y'):
     """
-    Normalize the y_col of the DataFrame to the 0-1 range, replacing the original column.
+    Normalize the y_col of the DataFrame so that the maximum value is 1, preserving residual mass.
     Args:
         df (pd.DataFrame): Input DataFrame.
         y_col (str): Name of the y column to normalize.
     Returns:
-        pd.DataFrame: DataFrame with y_col normalized to 0-1 range.
+        pd.DataFrame: DataFrame with y_col normalized so max=1, preserving residual mass.
     """
     df = df.copy()
     y = df[y_col]
-    df[y_col] = (y - y.min()) / (y.max() - y.min())
+    max_y = y.max()
+    df[y_col] = y / max_y
     return df
 

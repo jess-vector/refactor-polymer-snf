@@ -7,14 +7,14 @@ Each function is implemented in its respective file for modularity.
 """
 
 # Import all cleaning functions from the modules
-from .cleaning import convert_csv
-from .special_cleaning import tga_xy
-from .cleaning import trim_dataframe
-from .special_cleaning import normalize_tga
+from .cleaning import convert_csv, auto_trim, select_trim, interprolate_data
+from .special_cleaning import tga_xy, normalize_tga
 # Add all functions to __all__
 __all__ = [
     "convert_csv",
     "tga_xy",
-    "trim_dataframe",
+    "select_trim",
     "normalize_tga",
+    "auto_trim",
+    "interprolate_data",
 ]

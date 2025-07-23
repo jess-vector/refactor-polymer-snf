@@ -6,7 +6,7 @@ import os
 import pandas as pd
 import glob
 from pathlib import Path
-
+import numpy as np
 
 def convert_csv(data_directories):
     """
@@ -112,7 +112,7 @@ def convert_csv(data_directories):
 
 # FUNCT5 Interpolate data to N points between x-min and x-max
 
-def trim_dataframe(df, x_min=None, x_max=None, y_min=None, y_max=None, x_col='X', y_col='Y', sample_col='sample'):
+def select_trim(df, x_min=None, x_max=None, y_min=None, y_max=None, x_col='X', y_col='Y', sample_col='sample'):
     """
     Trim a DataFrame by x and/or y value ranges.
     Args:
@@ -140,4 +140,87 @@ def trim_dataframe(df, x_min=None, x_max=None, y_min=None, y_max=None, x_col='X'
     if sample_col in trimmed.columns:
         trimmed[sample_col] = trimmed[sample_col]
     return trimmed
+
  
+def auto_trim(dfs, x_col='X'):
+    """
+    Automatically trims a list of DataFrames to the overlapping x range.
+    Finds the maximum of all minimum x values and the minimum of all maximum x values,
+    then trims each DataFrame to this range.
+
+    Args:
+        dfs (list of pd.DataFrame): List of DataFrames, each with an x_col.
+        x_col (str): Name of the x column.
+
+    Returns:
+        list of pd.DataFrame: List of trimmed DataFrames.
+    """
+    # Find the min and max x for each DataFrame
+    min_xs = []
+    max_xs = []
+    for df in dfs:
+        if not df.empty:
+            min_xs.append(df[x_col].min())
+            max_xs.append(df[x_col].max())
+    if not min_xs or not max_xs:
+        return dfs  # Return as is if no data
+
+    overlap_min = max(min_xs)
+    overlap_max = min(max_xs)
+
+    trimmed_dfs = []
+    for df in dfs:
+        trimmed = df[(df[x_col] >= overlap_min) & (df[x_col] <= overlap_max)].copy()
+        trimmed_dfs.append(trimmed)
+    return trimmed_dfs
+
+
+
+def interprolate_data(dfs, x_col='X', y_col='Y', N=3000):
+    """
+    Interpolates each DataFrame's y_col to N points over the common x range.
+    Returns a 2D NumPy array: shape (num_samples, N), each row is a sample's interpolated y-values.
+
+    Args:
+        dfs (list of pd.DataFrame): List of DataFrames to interpolate.
+        x_col (str): Name of the x column.
+        y_col (str): Name of the y column.
+        N (int): Number of points to interpolate to (default 3000).
+
+    Returns:
+        np.ndarray: 2D array of shape (num_samples, N) with interpolated y-values.
+    """
+    # Find overlapping x range
+    min_xs = []
+    max_xs = []
+    for df in dfs:
+        if not df.empty:
+            min_xs.append(df[x_col].min())
+            max_xs.append(df[x_col].max())
+    if not min_xs or not max_xs:
+        raise ValueError("No valid dataframes with data to interpolate.")
+
+    overlap_min = max(min_xs)
+    overlap_max = min(max_xs)
+    if overlap_max <= overlap_min:
+        raise ValueError("No overlapping x range found for interpolation.")
+
+    x_new = np.linspace(overlap_min, overlap_max, N)
+    interpolated = []
+
+    for df in dfs:
+        # Drop duplicates and sort by x_col
+        df_sorted = df.drop_duplicates(subset=x_col).sort_values(by=x_col)
+        x = df_sorted[x_col].values
+        y = df_sorted[y_col].values
+        # Only use points within the overlap range
+        mask = (x >= overlap_min) & (x <= overlap_max)
+        x = x[mask]
+        y = y[mask]
+        if len(x) < 2:
+            # Not enough points to interpolate, fill with NaN
+            interpolated.append(np.full(N, np.nan))
+            continue
+        y_interp = np.interp(x_new, x, y)
+        interpolated.append(y_interp)
+    return np.vstack(interpolated)
