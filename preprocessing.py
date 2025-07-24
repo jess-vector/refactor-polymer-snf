@@ -3,8 +3,21 @@ import pandas as pd
 import numpy as np
 from src.processing.cleaning import convert_csv
 from src.processing.special_cleaning import tga_xy, normalize_tga
-from src.processing.cleaning import auto_trim, interprolate_data
+from src.processing.cleaning import auto_trim, interprolate_data, select_trim
 import matplotlib.pyplot as plt
+
+# Create output directories for processed data
+output_dir = "processed_data"
+tga_output_dir = os.path.join(output_dir, "tga")
+dsc_output_dir = os.path.join(output_dir, "dsc")
+
+# Create directories if they don't exist
+os.makedirs(tga_output_dir, exist_ok=True)
+os.makedirs(dsc_output_dir, exist_ok=True)
+
+print(f"Created output directories:")
+print(f"  - TGA data: {tga_output_dir}")
+print(f"  - DSC data: {dsc_output_dir}")
 
 # ----------------------- TGA -----------------------
 
@@ -161,16 +174,13 @@ if os.path.exists(tga_folder):
                     print(f"Max value across all samples: {np.nanmax(interpolated_array):.4f}")
                     print(f"Mean value across all samples: {np.nanmean(interpolated_array):.4f}")
                     
-                    # Save the sample index mapping to a text file
+                    # Get sample names for display
                     sample_names = [df['sample'].iloc[0] for df in normalized_data]
-                    mapping_file = "tga_sample_index_mapping.txt"
-                    with open(mapping_file, 'w') as f:
-                        f.write("Index\tSample Name\n")
-                        f.write("-" * 30 + "\n")
-                        for i, sample_name in enumerate(sample_names):
-                            f.write(f"{i}\t{sample_name}\n")
-                    print(f"\nSample index mapping saved to: {mapping_file}")
-                    print("This mapping shows which row in the interpolated array corresponds to which sample.")
+                    print(f"\nTGA Processing Summary:")
+                    print(f"  - Number of samples: {len(sample_names)}")
+                    print(f"  - Interpolation points: {interpolated_array.shape[1]}")
+                    print(f"  - Temperature range: {normalized_data[0]['X'].min():.1f}°C to {normalized_data[0]['X'].max():.1f}°C")
+                    print(f"  - Sample names: {sample_names}")
                     
                     # Plot the original normalized data
                     # Sort by sample name (alphanumeric)
@@ -200,8 +210,160 @@ if os.path.exists(tga_folder):
                     plt.legend(loc='best', fontsize='small', ncol=2)
                     plt.tight_layout()
                     plt.show()
+                    
+                    print("\nTGA data processing complete! Check the interactive plot above.")
 else:
     print(f"Error: TGA folder {tga_folder} does not exist")
 
 # ----------------------- DSC -----------------------
 
+# Define the DSC folder path
+dsc_folder = "/Users/jessicaagyemang/Documents/raw_data/DSC"
+# Check if the DSC folder exists
+if os.path.exists(dsc_folder):
+    # List files in DSC folder for debugging
+    dsc_files = [f for f in os.listdir(dsc_folder) if f.endswith('.csv')]
+    print(f"\n=== DSC Folder Contents ===")
+    print(f"Found {len(dsc_files)} CSV files in DSC folder:")
+    for f in dsc_files:
+        print(f"  - {f}")
+    print()
+    # Call the dsc_xy function to process DSC files
+    try:
+        from src.processing.special_cleaning import dsc_xy
+    except ImportError:
+        print("dsc_xy function not found in special_cleaning. Please implement or import it.")
+        dsc_xy = None
+
+    if dsc_xy is not None:
+        dsc_processed_data = dsc_xy(dsc_folder)
+
+        # Sort the processed data alphanumerically by sample name if not empty
+        if dsc_processed_data:
+            dsc_processed_data = sorted(dsc_processed_data, key=lambda df: df['sample'].iloc[0])
+            print(f"Processed {len(dsc_processed_data)} DSC files")
+            print("\n=== DSC Data Structure ===")
+            print(f"Type: {type(dsc_processed_data)}")
+            print(f"Length: {len(dsc_processed_data)}")
+            print(f"First DataFrame structure:")
+            print(f"Shape: {dsc_processed_data[0].shape}")
+            print(f"Columns: {list(dsc_processed_data[0].columns)}")
+            print(f"Data types: {dsc_processed_data[0].dtypes}")
+
+            # Trim the data to specific temperature range (60-180°C for DSC)
+            dsc_trimmed_data = []
+            for df in dsc_processed_data:
+                trimmed_df = select_trim(df, x_min=60, x_max=180, x_col='X', y_col='Y', sample_col='sample')
+                dsc_trimmed_data.append(trimmed_df)
+            print(f"\n=== Trimmed DSC Data Summary ===")
+            print(f"Total samples after trimming: {len(dsc_trimmed_data)}")
+            if dsc_trimmed_data and not dsc_trimmed_data[0].empty:
+                overlap_min = dsc_trimmed_data[0]['X'].min()
+                overlap_max = dsc_trimmed_data[0]['X'].max()
+                print(f"Trimmed DSC data X range (overlapping): {overlap_min:.1f}°C to {overlap_max:.1f}°C")
+            if dsc_trimmed_data:
+                print(f"First trimmed DSC DataFrame shape: {dsc_trimmed_data[0].shape}")
+                print("First 5 rows of trimmed DSC data:")
+                print(dsc_trimmed_data[0].head())
+                
+                # Interpolate the DSC data to a common grid
+                print(f"\n=== Interpolating DSC Data ===")
+                dsc_interpolated_array = interprolate_data(dsc_trimmed_data, x_col='X', y_col='Y', N=3000)
+                
+                print(f"Interpolated DSC data shape: {dsc_interpolated_array.shape}")
+                print(f"Number of samples: {dsc_interpolated_array.shape[0]}")
+                print(f"Number of interpolated points per sample: {dsc_interpolated_array.shape[1]}")
+                
+                # Show some statistics about the interpolated DSC data
+                print(f"\nInterpolated DSC data statistics:")
+                print(f"Min value across all samples: {np.nanmin(dsc_interpolated_array):.4f}")
+                print(f"Max value across all samples: {np.nanmax(dsc_interpolated_array):.4f}")
+                print(f"Mean value across all samples: {np.nanmean(dsc_interpolated_array):.4f}")
+                
+                # Save the DSC sample index mapping
+                dsc_sample_names = [df['sample'].iloc[0] for df in dsc_trimmed_data if not df.empty]
+                dsc_mapping_file = os.path.join(dsc_output_dir, "dsc_sample_index_mapping.txt")
+                with open(dsc_mapping_file, 'w') as f:
+                    f.write("Index\tSample Name\n")
+                    f.write("-" * 30 + "\n")
+                    for i, sample_name in enumerate(dsc_sample_names):
+                        f.write(f"{i}\t{sample_name}\n")
+                print(f"\nDSC sample index mapping saved to: {dsc_mapping_file}")
+                
+                # Save the interpolated DSC data
+                dsc_data_file = os.path.join(dsc_output_dir, "interpolated_dsc_data.npy")
+                np.save(dsc_data_file, dsc_interpolated_array)
+                print(f"Interpolated DSC data saved to: {dsc_data_file}")
+                
+                # Save metadata about the DSC data
+                dsc_metadata = {
+                    'num_samples': dsc_interpolated_array.shape[0],
+                    'num_points': dsc_interpolated_array.shape[1],
+                    'x_range': [dsc_trimmed_data[0]['X'].min(), dsc_trimmed_data[0]['X'].max()],
+                    'sample_names': dsc_sample_names,
+                    'data_type': 'DSC',
+                    'trim_range': [60, 180],  # Temperature range used for trimming
+                    'interpolation_points': 3000
+                }
+                
+                dsc_metadata_file = os.path.join(dsc_output_dir, "dsc_metadata.npz")
+                np.savez(dsc_metadata_file, **dsc_metadata)
+                print(f"DSC metadata saved to: {dsc_metadata_file}")
+                
+                # Save sample names as a separate text file for easy reading
+                dsc_samples_file = os.path.join(dsc_output_dir, "dsc_sample_names.txt")
+                with open(dsc_samples_file, 'w') as f:
+                    for i, sample_name in enumerate(dsc_sample_names):
+                        f.write(f"{i}: {sample_name}\n")
+                print(f"DSC sample names saved to: {dsc_samples_file}")
+                
+                # Plot the interpolated DSC data
+                x_interp_dsc = np.linspace(dsc_trimmed_data[0]['X'].min(), dsc_trimmed_data[0]['X'].max(), 3000)
+                
+                plt.figure(figsize=(10, 6))
+                for i, sample_name in enumerate(dsc_sample_names):
+                    plt.plot(x_interp_dsc, dsc_interpolated_array[i], label=sample_name, alpha=0.7)
+
+                plt.xlabel('Temperature (°C)')
+                plt.ylabel('Heat Flow (W/g) - Interpolated')
+                plt.title('Interpolated DSC Curves for All Samples')
+                plt.legend(loc='best', fontsize='small', ncol=2)
+                plt.tight_layout()
+                plt.show()
+                
+                print("\nDSC data processing complete! Check the interactive plot above.")
+        else:
+            print("No DSC data files found or processed")
+    else:
+        print("dsc_xy function is not available.")
+else:
+    print(f"Error: DSC folder {dsc_folder} does not exist")
+
+# ----------------------- Summary -----------------------
+
+print(f"\n{'='*50}")
+print("PROCESSING SUMMARY")
+print(f"{'='*50}")
+
+# Check what was saved
+if os.path.exists(tga_output_dir):
+    tga_files = os.listdir(tga_output_dir)
+    print(f"\nTGA data saved in: {tga_output_dir}")
+    print("Files created:")
+    for file in tga_files:
+        file_path = os.path.join(tga_output_dir, file)
+        file_size = os.path.getsize(file_path)
+        print(f"  - {file} ({file_size} bytes)")
+
+if os.path.exists(dsc_output_dir):
+    dsc_files = os.listdir(dsc_output_dir)
+    print(f"\nDSC data saved in: {dsc_output_dir}")
+    print("Files created:")
+    for file in dsc_files:
+        file_path = os.path.join(dsc_output_dir, file)
+        file_size = os.path.getsize(file_path)
+        print(f"  - {file} ({file_size} bytes)")
+
+print(f"\n{'='*50}")
+print("Data files are ready for further analysis!")
+print(f"{'='*50}")
