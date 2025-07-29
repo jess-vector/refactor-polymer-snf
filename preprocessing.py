@@ -46,10 +46,10 @@ print(f"  - DSC data: {dsc_output_dir}")
 
 
 # Define the TGA folder path
-tga_folder = "/Users/jessicaagyemang/Documents/raw_data/TGA"
+tga_filepath = "/Users/jessicaagyemang/Documents/raw_data/TGA"
 # Call the tga_xy function
-if os.path.exists(tga_folder):
-    processed_data = tga_xy(tga_folder)
+if os.path.exists(tga_filepath):
+    processed_data = tga_xy(tga_filepath)
     
     # Sort the processed data alphanumerically by sample name
     processed_data = sorted(processed_data, key=lambda df: df['sample'].iloc[0])
@@ -200,29 +200,27 @@ if os.path.exists(tga_folder):
                     # Get the x-axis values for the interpolated data
                     x_interp = np.linspace(normalized_data[0]['X'].min(), normalized_data[0]['X'].max(), 3000)
                     
-                    plt.figure(figsize=(10, 6))
-                    for i, sample_name in enumerate(sample_names):
-                        plt.plot(x_interp, interpolated_array[i], label=sample_name, alpha=0.7)
-
-                    plt.xlabel('Temperature (°C)')
-                    plt.ylabel('Normalized Mass (Interpolated)')
-                    plt.title('Interpolated TGA Curves for All Samples')
-                    plt.legend(loc='best', fontsize='small', ncol=2)
-                    plt.tight_layout()
-                    plt.show()
+                    # Store TGA data for later plotting
+                    tga_plot_data = {
+                        'x': x_interp,
+                        'y': interpolated_array,
+                        'sample_names': sample_names,
+                        'title': 'Interpolated TGA Curves for All Samples',
+                        'ylabel': 'Normalized Mass (Interpolated)'
+                    }
                     
-                    print("\nTGA data processing complete! Check the interactive plot above.")
+                    print("\nTGA data processing complete!")
 else:
-    print(f"Error: TGA folder {tga_folder} does not exist")
+    print(f"Error: TGA folder {tga_filepath} does not exist")
 
 # ----------------------- DSC -----------------------
 
 # Define the DSC folder path
-dsc_folder = "/Users/jessicaagyemang/Documents/raw_data/DSC"
+dsc_filepath = "/Users/jessicaagyemang/Documents/raw_data/DSC"
 # Check if the DSC folder exists
-if os.path.exists(dsc_folder):
+if os.path.exists(dsc_filepath):
     # List files in DSC folder for debugging
-    dsc_files = [f for f in os.listdir(dsc_folder) if f.endswith('.csv')]
+    dsc_files = [f for f in os.listdir(dsc_filepath) if f.endswith('.csv')]
     print(f"\n=== DSC Folder Contents ===")
     print(f"Found {len(dsc_files)} CSV files in DSC folder:")
     for f in dsc_files:
@@ -236,7 +234,7 @@ if os.path.exists(dsc_folder):
         dsc_xy = None
 
     if dsc_xy is not None:
-        dsc_processed_data = dsc_xy(dsc_folder)
+        dsc_processed_data = dsc_xy(dsc_filepath)
 
         # Sort the processed data alphanumerically by sample name if not empty
         if dsc_processed_data:
@@ -320,24 +318,22 @@ if os.path.exists(dsc_folder):
                 # Plot the interpolated DSC data
                 x_interp_dsc = np.linspace(dsc_trimmed_data[0]['X'].min(), dsc_trimmed_data[0]['X'].max(), 3000)
                 
-                plt.figure(figsize=(10, 6))
-                for i, sample_name in enumerate(dsc_sample_names):
-                    plt.plot(x_interp_dsc, dsc_interpolated_array[i], label=sample_name, alpha=0.7)
-
-                plt.xlabel('Temperature (°C)')
-                plt.ylabel('Heat Flow (W/g) - Interpolated')
-                plt.title('Interpolated DSC Curves for All Samples')
-                plt.legend(loc='best', fontsize='small', ncol=2)
-                plt.tight_layout()
-                plt.show()
+                # Store DSC data for later plotting
+                dsc_plot_data = {
+                    'x': x_interp_dsc,
+                    'y': dsc_interpolated_array,
+                    'sample_names': dsc_sample_names,
+                    'title': 'Interpolated DSC Curves for All Samples',
+                    'ylabel': 'Heat Flow (W/g) - Interpolated'
+                }
                 
-                print("\nDSC data processing complete! Check the interactive plot above.")
+                print("\nDSC data processing complete!")
         else:
             print("No DSC data files found or processed")
     else:
         print("dsc_xy function is not available.")
 else:
-    print(f"Error: DSC folder {dsc_folder} does not exist")
+    print(f"Error: DSC folder {dsc_filepath} does not exist")
 
 # ----------------------- Summary -----------------------
 
@@ -367,3 +363,105 @@ if os.path.exists(dsc_output_dir):
 print(f"\n{'='*50}")
 print("Data files are ready for further analysis!")
 print(f"{'='*50}")
+
+# ----------------------- Interactive Plotting -----------------------
+
+# Check if we have both TGA and DSC data to plot
+if 'tga_plot_data' in locals() and 'dsc_plot_data' in locals():
+    print("\nCreating interactive plot with navigation...")
+    
+    import matplotlib.pyplot as plt
+    from matplotlib.widgets import Button
+    
+    # Create the main figure and subplot
+    fig, ax = plt.subplots(figsize=(12, 8))
+    plt.subplots_adjust(bottom=0.15)  # Make room for buttons
+    
+    # Create a class to handle the interactive plotting
+    class InteractivePlotter:
+        def __init__(self, tga_data, dsc_data):
+            self.tga_data = tga_data
+            self.dsc_data = dsc_data
+            self.current_data = 'tga'
+            self.plot_data = tga_data
+            self.ax = ax
+            self.fig = fig
+        
+        def plot_current_data(self):
+            self.ax.clear()
+            for i, sample_name in enumerate(self.plot_data['sample_names']):
+                self.ax.plot(self.plot_data['x'], self.plot_data['y'][i], label=sample_name, alpha=0.7)
+            
+            self.ax.set_xlabel('Temperature (°C)')
+            self.ax.set_ylabel(self.plot_data['ylabel'])
+            self.ax.set_title(self.plot_data['title'])
+            self.ax.legend(loc='best', fontsize='small', ncol=2)
+            self.ax.grid(True, alpha=0.3)
+            plt.draw()
+        
+        def switch_to_tga(self, event):
+            self.current_data = 'tga'
+            self.plot_data = self.tga_data
+            self.plot_current_data()
+            print("Switched to TGA data")
+        
+        def switch_to_dsc(self, event):
+            self.current_data = 'dsc'
+            self.plot_data = self.dsc_data
+            self.plot_current_data()
+            print("Switched to DSC data")
+    
+    # Create the plotter instance
+    plotter = InteractivePlotter(tga_plot_data, dsc_plot_data)
+    
+    # Create buttons
+    ax_tga = plt.axes([0.2, 0.05, 0.15, 0.075])
+    ax_dsc = plt.axes([0.65, 0.05, 0.15, 0.075])
+    
+    btn_tga = Button(ax_tga, 'Show TGA')
+    btn_dsc = Button(ax_dsc, 'Show DSC')
+    
+    # Connect button events
+    btn_tga.on_clicked(plotter.switch_to_tga)
+    btn_dsc.on_clicked(plotter.switch_to_dsc)
+    
+    # Plot initial data (TGA)
+    plotter.plot_current_data()
+    
+    plt.show()
+    print("Interactive plot created! Use the buttons to switch between TGA and DSC data.")
+
+elif 'tga_plot_data' in locals():
+    print("\nOnly TGA data available - showing TGA plot...")
+    import matplotlib.pyplot as plt
+    
+    plt.figure(figsize=(12, 8))
+    for i, sample_name in enumerate(tga_plot_data['sample_names']):
+        plt.plot(tga_plot_data['x'], tga_plot_data['y'][i], label=sample_name, alpha=0.7)
+    
+    plt.xlabel('Temperature (°C)')
+    plt.ylabel(tga_plot_data['ylabel'])
+    plt.title(tga_plot_data['title'])
+    plt.legend(loc='best', fontsize='small', ncol=2)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+elif 'dsc_plot_data' in locals():
+    print("\nOnly DSC data available - showing DSC plot...")
+    import matplotlib.pyplot as plt
+    
+    plt.figure(figsize=(12, 8))
+    for i, sample_name in enumerate(dsc_plot_data['sample_names']):
+        plt.plot(dsc_plot_data['x'], dsc_plot_data['y'][i], label=sample_name, alpha=0.7)
+    
+    plt.xlabel('Temperature (°C)')
+    plt.ylabel(dsc_plot_data['ylabel'])
+    plt.title(dsc_plot_data['title'])
+    plt.legend(loc='best', fontsize='small', ncol=2)
+    plt.grid(True, alpha=0.3)
+    plt.tight_layout()
+    plt.show()
+
+else:
+    print("\nNo plot data available to display.")
