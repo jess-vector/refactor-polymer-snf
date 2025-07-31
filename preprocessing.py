@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 from src.processing.cleaning import convert_csv
-from src.processing.special_cleaning import tga_xy, normalize_tga
+from src.processing.special_cleaning import tga_xy, normalize_tga, avg_ftir
 from src.processing.cleaning import auto_trim, interprolate_data, select_trim
 import matplotlib.pyplot as plt
 
@@ -334,6 +334,147 @@ if os.path.exists(dsc_filepath):
         print("dsc_xy function is not available.")
 else:
     print(f"Error: DSC folder {dsc_filepath} does not exist")
+
+
+# ----------------------- FTIR -----------------------
+
+# Define the FTIR folder path
+ftir_filepath = "/Users/jessicaagyemang/Documents/raw_data/FTIR/HDPE"
+# Check if the FTIR folder exists
+if os.path.exists(ftir_filepath):
+    # List files in FTIR folder for debugging
+    ftir_files = [f for f in os.listdir(ftir_filepath) if f.endswith('.csv')]
+    # Check for FTIR repeats using the filename convention (e.g., HDPE-PCR-14_1, HDPE-PCR-14_2)
+    from collections import defaultdict
+
+    # Group files by base sample-ID (before last underscore and number)
+    sample_groups = defaultdict(list)
+    for fname in ftir_files:
+        name, _ = os.path.splitext(fname)
+        # Check if the filename ends with underscore followed by a number (integer or decimal)
+        if '_' in name:
+            last_part = name.split('_')[-1]
+            # Check if it's a number (integer or decimal)
+            try:
+                float(last_part)  # This will work for both "1" and "1.0", "1.1", etc.
+                base = '_'.join(name.split('_')[:-1])
+            except ValueError:
+                # Not a number, treat as base name
+                base = name
+        else:
+            base = name
+        sample_groups[base].append(fname)
+
+    # Find if any group has more than one file (i.e., repeats exist)
+    repeats_exist = any(len(group) > 1 for group in sample_groups.values())
+
+    if repeats_exist:
+        if 'avg_ftir' in globals():
+            print("\nAveraging FTIR repeat files...")
+            averaged_ftir_files = avg_ftir(ftir_filepath)
+            if averaged_ftir_files:
+                print(f"Averaged FTIR files saved in: {os.path.join(ftir_filepath, 'averaged')}")
+                print("Averaged files:")
+                for file in averaged_ftir_files:
+                    print(f"  - {file}")
+            else:
+                print("No FTIR files were averaged (check for repeats or file issues).")
+        else:
+            print("avg_ftir function is not available.")
+    else:
+        print("No FTIR repeats found by filename convention; skipping averaging.")
+
+
+import matplotlib.pyplot as plt
+
+# FTIR Averaged Plotting Section
+import glob
+
+# Path to averaged FTIR files
+averaged_ftir_dir = os.path.join(ftir_filepath, "averaged")
+if os.path.exists(averaged_ftir_dir):
+    # Find all .csv files in the averaged folder
+    averaged_files = sorted([f for f in os.listdir(averaged_ftir_dir) if f.endswith('.csv')])
+    if averaged_files:
+        # Load all averaged FTIR curves into a list of (filename, DataFrame)
+        ftir_curves = []
+        for fname in averaged_files:
+            fpath = os.path.join(averaged_ftir_dir, fname)
+            try:
+                df = pd.read_csv(fpath, header=None)
+                ftir_curves.append((fname, df))
+            except Exception as e:
+                print(f"Warning: Could not read {fname}: {e}")
+
+        if ftir_curves:
+            print(f"\nInteractive FTIR plotter: {len(ftir_curves)} averaged curves found.")
+
+            class FTIRPlotter:
+                def __init__(self, curves):
+                    self.curves = curves
+                    self.idx = 0
+                    self.fig, self.ax = plt.subplots(figsize=(10, 6))
+                    self.fig.canvas.mpl_connect('key_press_event', self.on_key)
+                    self.fig.canvas.mpl_connect('button_press_event', self.on_click)
+                    plt.subplots_adjust(bottom=0.2)
+                    self.plot_curve()
+
+                    # Add navigation buttons
+                    axprev = plt.axes([0.3, 0.05, 0.1, 0.075])
+                    axnext = plt.axes([0.6, 0.05, 0.1, 0.075])
+                    self.bnext = plt.Button(axnext, 'Next')
+                    self.bprev = plt.Button(axprev, 'Previous')
+                    self.bnext.on_clicked(self.next_curve)
+                    self.bprev.on_clicked(self.prev_curve)
+
+                def plot_curve(self):
+                    self.ax.clear()
+                    fname, df = self.curves[self.idx]
+                    # Assume first column is X, second is Y
+                    if df.shape[1] >= 2:
+                        self.ax.plot(df.iloc[:, 0], df.iloc[:, 1], label=fname)
+                        self.ax.set_xlabel("Wavenumber (cm$^{-1}$)")
+                        self.ax.set_ylabel("Absorbance")
+                        self.ax.set_title(f"FTIR Averaged Curve: {fname} ({self.idx+1}/{len(self.curves)})")
+                        self.ax.legend()
+                        self.ax.grid(True)
+                    else:
+                        self.ax.text(0.5, 0.5, f"File {fname} has insufficient columns.", ha='center', va='center')
+                    self.fig.canvas.draw_idle()
+
+                def next_curve(self, event=None):
+                    self.idx = (self.idx + 1) % len(self.curves)
+                    self.plot_curve()
+
+                def prev_curve(self, event=None):
+                    self.idx = (self.idx - 1) % len(self.curves)
+                    self.plot_curve()
+
+                def on_key(self, event):
+                    if event.key in ['right', 'down']:
+                        self.next_curve()
+                    elif event.key in ['left', 'up']:
+                        self.prev_curve()
+
+                def on_click(self, event):
+                    # Left click: next, right click: previous
+                    if event.button == 1:
+                        self.next_curve()
+                    elif event.button == 3:
+                        self.prev_curve()
+
+            # Launch the interactive plotter
+            FTIRPlotter(ftir_curves)
+            plt.show()
+        else:
+            print("No valid FTIR averaged curves to plot.")
+    else:
+        print("No averaged FTIR .csv files found in the averaged folder.")
+else:
+    print("Averaged FTIR folder does not exist; skipping FTIR plotting.")
+
+
+
 
 # ----------------------- Summary -----------------------
 

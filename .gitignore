@@ -193,6 +193,5 @@ cython_debug/
 .cursorignore
 .cursorindexingignore
 
-summary_pdfs/
-
+Differences/
 

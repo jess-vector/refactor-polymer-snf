@@ -111,3 +111,67 @@ def dsc_xy(dsc_folder):
                 continue
     return processed_dfs
 
+def avg_ftir(filepath):
+    """
+    Averages repeat FTIR sample data files in the given directory.
+    - Checks for repeats using underscore naming (_0, _1, etc.).
+    - Averages all repeats for each base sample-ID.
+    - Saves averaged files in a new 'averaged' subfolder inside filepath.
+    - Returns a list of new averaged file paths.
+    """
+    import os
+    import pandas as pd
+    from collections import defaultdict
+
+    # Prepare output directory
+    averaged_dir = os.path.join(filepath, "averaged")
+    os.makedirs(averaged_dir, exist_ok=True)
+
+    # Find all .csv files in the directory
+    files = [f for f in os.listdir(filepath) if f.endswith('.csv') and os.path.isfile(os.path.join(filepath, f))]
+
+    # Group files by base sample-ID (before last underscore and number)
+    sample_groups = defaultdict(list)
+    for fname in files:
+        name, _ = os.path.splitext(fname)
+        # Check if the filename ends with underscore followed by a number (integer or decimal)
+        if '_' in name:
+            last_part = name.split('_')[-1]
+            # Check if it's a number (integer or decimal)
+            try:
+                float(last_part)  # This will work for both "1" and "1.0", "1.1", etc.
+                base = '_'.join(name.split('_')[:-1])
+            except ValueError:
+                # Not a number, treat as base name
+                base = name
+        else:
+            base = name
+        sample_groups[base].append(fname)
+
+    averaged_files = []
+    for base, group in sample_groups.items():
+        dfs = []
+        for fname in group:
+            try:
+                df = pd.read_csv(os.path.join(filepath, fname), header=None)
+                dfs.append(df)
+            except Exception as e:
+                print(f"Warning: Could not read {fname}: {e}")
+        if not dfs:
+            continue
+        # Check all have same shape
+        shapes = set(df.shape for df in dfs)
+        if len(shapes) > 1:
+            print(f"Warning: Skipping {base} - repeat files have different shapes")
+            continue
+        # Average
+        avg_df = sum(dfs) / len(dfs)
+        # Save with base name (no underscore) in 'averaged' folder
+        outname = f"{base}.csv"
+        outpath = os.path.join(averaged_dir, outname)
+        avg_df.to_csv(outpath, index=False, header=False)
+        averaged_files.append(outpath)
+        print(f"Averaged {len(dfs)} files for {base} -> {outpath}")
+
+    return averaged_files
+
